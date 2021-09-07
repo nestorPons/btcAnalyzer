@@ -147,44 +147,39 @@ function trimString(){
 function unconfirmedTransactions(){
 
 	number_output=$1
-	echo '' > ut.tmp
-
-	while [ "$(cat ut.tmp | wc -l)" == "1" ]; do
-		curl -s "$unconfirmed_transactions" | html2text > ut.tmp
+	touch  ut.table ut.tmp money.tmp tmpmoney.tmp
+	while [ "$(cat ut.tmp | wc -l)" == "0" ]; do
+		curl -s "$unconfirmed_transactions" | html2text | awk 'NF' > ut.tmp
 	done
-
-	hashes=$(cat ut.tmp | grep "Hash" -A 1 | grep -v -E "Hash|\--|Tiempo" | head -n $number_output)
-
-	echo "Hash_Cantidad_Bitcoin_Tiempo" > ut.table
+	hashes=$(cat ut.tmp | egrep -o "\[[A-Za-z0-9]{20,100}\]" | head -n $number_output | grep "[A-Za-z0-9]" | sed 's/[][]//g')
+	echo "Hash_Dolares_Bitcoin_Tiempo" > ut.table
 
 	for hash in $hashes; do
-		echo "${hash}_$(cat ut.tmp | grep "$hash" -A 6 | tail -n 1)_$(cat ut.tmp | grep "$hash" -A 4 | tail -n 1)_$(cat ut.tmp | grep "$hash" -A 2 | tail -n 1)" >> ut.table
+		dolars=$(cat ut.tmp | grep "$hash" -A 6 | tail -n 1 | cut -d'U' -f 1)
+		btc=$(cat ut.tmp | grep "$hash" -A 4 | tail -n 1 | cut -d'B' -f 1)
+		tim=$(cat ut.tmp | grep "$hash" -A 2 | tail -n 1)
+		echo "${hash}_$dolars _$btc _$tim" >> ut.table
 	done
 
-	cat ut.table | tr '_' ' ' | awk '{print $2}' | grep -v "Cantidad" | tr -d '$' | sed 's/\..*//g' | tr -d ',' > money
+	cat ut.table | tr '_' ' ' | awk '{print $2}' | grep -v "Cantidad" | tr -d '$' | sed 's/\..*//g' | tr -d ',' > tmpmoney.tmp
 
-	money=0; cat money | while read money_in_line; do
+	money=0; cat tmpmoney.tmp | while read money_in_line; do
 		let money+=$money_in_line
 		echo $money > money.tmp
 	done;
-
+	cat money.tmp
 	echo -n "Cantidad total_" > amount.table
 	echo "\$$(printf "%'.d\n" $(cat money.tmp))" >> amount.table
 
-	if [ "$(cat ut.table | wc -l)" != "1" ]; then
+	if [ "$(cat ut.table | wc -l)" != "0" ]; then
 		echo -ne "${yellowColour}"
 		printTable '_' "$(cat ut.table)"
 		echo -ne "${endColour}"
 		echo -ne "${blueColour}"
 		printTable '_' "$(cat amount.table)"
 		echo -ne "${endColour}"
-		rm ut.* money* amount.table 2>/dev/null
-		tput cnorm; exit 0
-	else
-		rm ut.t* 2>/dev/null
 	fi
-
-	rm ut.* money* amount.table
+# rm ut.table ut.tmp money.tmp tmpmoney.tmp # 2>/dev/null
 	tput cnorm
 }
 
@@ -194,7 +189,7 @@ function inspectTransaction(){
 	echo "Entrada Total_Salida Total" > total_entrada_salida.tmp
 
 	while [ "$(cat total_entrada_salida.tmp | wc -l)" == "1" ]; do
-		curl -s "${inspect_transaction_url}${inspect_transaction_hash}" | html2text | grep -E "Entrada total|Salida total" -A 1  | grep -v -E "Entrada total|Salida total" | xargs | tr ' ' '_' | sed 's/_BTC/ BTC/g' >> total_entrada_salida.tmp
+		curl -s "${inspect_transaction_url}${inspect_transaction_hash}" | html2text | grep -E "Entrada total|Salida total" -A 1  | grep -v -E "Entrada total|Salida total" | xargs | tr ' ' '_'  >> total_entrada_salida.tmp
 	done
 
 	echo -ne "${grayColour}"
@@ -229,7 +224,7 @@ function inspectTransaction(){
 function inspectAddress(){
 	address_hash=$1
 	echo "Transacciones realizadas_Cantidad total recibida (BTC)_Cantidad total enviada (BTC)_Saldo total en la cuenta (BTC)" > address.information
-	curl -s "${inspect_address_url}${address_hash}" | html2text | grep -E "Transacciones|Total Recibidas|Cantidad total enviada|Saldo final" -A 1 | head -n -2 | grep -v -E "Transacciones|Total Recibidas|Cantidad total enviada|Saldo final" | xargs | tr ' ' '_' | sed 's/_BTC/ BTC/g' >> address.information
+	curl -s "${inspect_address_url}${address_hash}" | html2text | grep -E "Transacciones|Total Recibidas|Cantidad total enviada|Saldo final" -A 1 | head -n -2 | grep -v -E "Transacciones|Total Recibidas|Cantidad total enviada|Saldo final" | xargs | tr ' ' '_' >> address.information
 
 	echo -ne "${grayColour}"
 	printTable '_' "$(cat address.information)"
@@ -265,6 +260,9 @@ function inspectAddress(){
 	tput cnorm
 }
 
+
+## Inicio programa 
+
 dependencies; parameter_counter=0
 
 while getopts "e:n:i:a:h:" arg; do
@@ -283,12 +281,10 @@ if [ $parameter_counter -eq 0 ]; then
 	helpPanel
 else
 	if [ "$(echo $exploration_mode)" == "unconfirmed_transactions" ]; then
-		if [ ! "$number_output" ]; then
+		if [ ! "$number_output" ]; then	
 			number_output=100
-			unconfirmedTransactions $number_output
-		else
-			unconfirmedTransactions $number_output
 		fi
+		unconfirmedTransactions $number_output
 	elif [ "$(echo $exploration_mode)" == "inspect" ]; then
 		inspectTransaction $inspect_transaction
 	elif [ "$(echo $exploration_mode)" == "address" ]; then
