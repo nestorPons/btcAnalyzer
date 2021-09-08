@@ -160,9 +160,9 @@ function trimString(){
 }
 
 function unconfirmedTransactions(){
-
 	number_output=$1
-	touch  ut.table ut.tmp money.tmp tmpmoney.tmp
+	touch  ut.table ut.tmp money.tmp tmpmoney.tmp amount.table
+
 	while [ "$(cat ut.tmp | wc -l)" == "0" ]; do
 		curl -s "$unconfirmed_transactions" | html2text | awk 'NF' > ut.tmp
 	done
@@ -173,7 +173,19 @@ function unconfirmedTransactions(){
 		dolars=$(cat ut.tmp | grep "$hash" -A 6 | tail -n 1 | cut -d'U' -f 1)
 		btc=$(cat ut.tmp | grep "$hash" -A 4 | tail -n 1 | cut -d'B' -f 1)
 		tim=$(cat ut.tmp | grep "$hash" -A 2 | tail -n 1)
-		echo "${hash}_$dolars _$btc _$tim" >> ut.table
+		# Ajustamos el tiempo a la zona horaria
+	
+		hour=$(echo $tim | cut -d ':' -f 1)
+		min=$(echo $tim | cut -d ':' -f 2)
+		timezonef=$(echo "$timezone" | cut -c 2,3)
+		sym=$(echo "$hour" | cut -c1)
+		if [ "$sym" == "-" ]; then 
+			timef=$(($hour-$timezonef))":"$min
+		else
+			timef=$(($hour+$timezone))":"$min
+		fi
+
+		echo "${hash}_$dolars _$btc _$timef" >> ut.table
 	done
 
 	cat ut.table | tr '_' ' ' | awk '{print $2}' | grep -v "Cantidad" | tr -d '$' | sed 's/\..*//g' | tr -d ',' > tmpmoney.tmp
@@ -276,7 +288,7 @@ function inspectAddress(){
 }
 
 # Inicio programa
-## Carga de configuración
+
 dependencies; parameter_counter=0
 
 while getopts "e:n:i:a:h:" arg; do
