@@ -27,9 +27,21 @@ function dependencies(){
 
 	echo; for program in "${dependencies_array[@]}"; do
 		if [ ! "$(command -v $program)" ]; then
-			echo -e "${redColour}[X]${endColour}${grayColour} $program${endColour}${yellowColour} no está instalado${endColour}"; sleep 1
+			echo -e "${redColour}[X]${endColour}${grayColour} $program${endColour}${yellowColour} dependencia requerida${endColour}"; sleep 1
 			echo -e "\n${yellowColour}[i]${endColour}${grayColour} Instalando...${endColour}"; sleep 1
-			apt install $program -y > /dev/null 2>&1
+			## Comprobamos si estamos en ArchLinux (sin Pacman que necesita permisos de superusuario)
+			if [ -n "$(which yay)" ]; then
+				yay -S html2text
+			elif [ -n "$(which yaourt)" ]; then
+				yaourt -S html2text
+
+			# Dereivados de devian
+			elif [ -n "$(which apt)" ]; then
+				apt install $program -y > /dev/null 2>&1
+			else
+				echo "Instale la dependencias necesarias antes de continuar, gracias"
+				tput cnorm; exit 1
+			fi
 			echo -e "\n${greenColour}[V]${endColour}${grayColour} $program${endColour}${yellowColour} instalado${endColour}\n"; sleep 2
 			let counter+=1
 		fi
@@ -55,6 +67,9 @@ function helpPanel(){
 unconfirmed_transactions="https://www.blockchain.com/es/btc/unconfirmed-transactions"
 inspect_transaction_url="https://www.blockchain.com/es/btc/tx/"
 inspect_address_url="https://www.blockchain.com/es/btc/address/"
+
+## Variables de configuración
+source <(grep = config.ini | sed -e 's/\s*=\s*/=/g' -e 's/^;/#/g')
 
 function printTable(){
 
@@ -167,7 +182,7 @@ function unconfirmedTransactions(){
 		let money+=$money_in_line
 		echo $money > money.tmp
 	done;
-	cat money.tmp
+
 	echo -n "Cantidad total_" > amount.table
 	echo "\$$(printf "%'.d\n" $(cat money.tmp))" >> amount.table
 
@@ -179,7 +194,7 @@ function unconfirmedTransactions(){
 		printTable '_' "$(cat amount.table)"
 		echo -ne "${endColour}"
 	fi
-# rm ut.table ut.tmp money.tmp tmpmoney.tmp # 2>/dev/null
+	rm ut.table ut.tmp money.tmp tmpmoney.tmp amount.table 2>/dev/null
 	tput cnorm
 }
 
@@ -260,9 +275,8 @@ function inspectAddress(){
 	tput cnorm
 }
 
-
-## Inicio programa 
-
+# Inicio programa
+## Carga de configuración
 dependencies; parameter_counter=0
 
 while getopts "e:n:i:a:h:" arg; do
