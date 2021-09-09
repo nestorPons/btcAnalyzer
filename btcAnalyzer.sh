@@ -55,6 +55,7 @@ function helpPanel(){
 	echo -e "\t\t${purpleColour}unconfirmed_transactions${endColour}${yellowColour}:\t Listar transacciones no confirmadas${endColour}"
 	echo -e "\t\t${purpleColour}inspect${endColour}${yellowColour}:\t\t\t Inspeccionar un hash de transacción${endColour}"
 	echo -e "\t\t${purpleColour}address${endColour}${yellowColour}:\t\t\t Inspeccionar una transacción de dirección${endColour}"
+	echo -e "\n\t${grayColour}[-r]${endColour}${yellowColour} Modo exploración de transacciones sin confirmar en modo refresco en segundos (Ejemplo: -n 10)${endColour}"
 	echo -e "\n\t${grayColour}[-n]${endColour}${yellowColour} Limitar el número de resultados${endColour}${blueColour} (Ejemplo: -n 10)${endColour}"
 	echo -e "\n\t${grayColour}[-i]${endColour}${yellowColour} Proporcionar el identificador de transacción${endColour}${blueColour} (Ejemplo: -i ba76ab9876b98ad5b98ad5b9a8db5ad98b5ad98b5a9d)${endColour}"
 	echo -e "\n\t${grayColour}[-a]${endColour}${yellowColour} Proporcionar una dirección de transacción${endColour}${blueColour} (Ejemplo: -a bad876fa876A876f8d6a861b9a8bd9a)${endColour}"
@@ -159,13 +160,23 @@ function trimString(){
     sed 's,^[[:blank:]]*,,' <<< "${string}" | sed 's,[[:blank:]]*$,,'
 }
 
+function refreshTransactions(){
+	echo "Pulse ctrl + c para detener el programa"
+	while true;do
+		unconfirmedTransactions $number_output	
+		sleep $refresh
+	done 
+}
+
 function unconfirmedTransactions(){
 	number_output=$1
-	touch  ut.table ut.tmp money.tmp tmpmoney.tmp amount.table
+	touch  ut.table ut.tmp money.tmp tmpmoney.tmp amount.table utm.tmp
 
-	while [ "$(cat ut.tmp | wc -l)" == "0" ]; do
-		curl -s "$unconfirmed_transactions" | html2text | awk 'NF' > ut.tmp
-	done
+#	while [ "$(cat ut.tmp | wc -l)" == "0" ]; do
+		# curl -s "$unconfirmed_transactions" | html2text | awk 'NF' > ut.tmp
+	wget --force-html -nv -O utm.tmp --show-progress $unconfirmed_transactions
+	cat utm.tmp | html2text | awk 'NF' > ut.tmp 
+#	done
 	hashes=$(cat ut.tmp | egrep -o "\[[A-Za-z0-9]{20,100}\]" | head -n $number_output | grep "[A-Za-z0-9]" | sed 's/[][]//g')
 	echo "Hash_Dolares_Bitcoin_Tiempo" > ut.table
 
@@ -180,9 +191,9 @@ function unconfirmedTransactions(){
 		timezonef=$(echo "$timezone" | cut -c 2,3)
 		sym=$(echo "$hour" | cut -c1)
 		if [ "$sym" == "-" ]; then 
-			timef=$(($hour-$timezonef))":"$min
+			timef="$((10#$hour-10#$timezonef)):10#$min"
 		else
-			timef=$(($hour+$timezone))":"$min
+			timef="$((10#$hour+10#$timezonef)):10#$min"
 		fi
 
 		echo "${hash}_$dolars _$btc _$timef" >> ut.table
@@ -199,6 +210,7 @@ function unconfirmedTransactions(){
 	echo "\$$(printf "%'.d\n" $(cat money.tmp))" >> amount.table
 
 	if [ "$(cat ut.table | wc -l)" != "0" ]; then
+		clear
 		echo -ne "${yellowColour}"
 		printTable '_' "$(cat ut.table)"
 		echo -ne "${endColour}"
@@ -206,7 +218,7 @@ function unconfirmedTransactions(){
 		printTable '_' "$(cat amount.table)"
 		echo -ne "${endColour}"
 	fi
-	rm ut.table ut.tmp money.tmp tmpmoney.tmp amount.table 2>/dev/null
+	rm ut.table ut.tmp money.tmp tmpmoney.tmp amount.table utm.tmp 2>/dev/null
 	tput cnorm
 }
 
@@ -291,9 +303,10 @@ function inspectAddress(){
 
 dependencies; parameter_counter=0
 
-while getopts "e:n:i:a:h:" arg; do
+while getopts "e:r:n:i:a:h:" arg; do
 	case $arg in
 		e) exploration_mode=$OPTARG; let parameter_counter+=1;;
+		r) refresh=$OPTARG; let parameter_counter+=1;;
 		n) number_output=$OPTARG; let parameter_counter+=1;;
 		i) inspect_transaction=$OPTARG; let parameter_counter+=1;;
 		a) inspect_address=$OPTARG; let parameter_counter+=1;;
@@ -302,7 +315,6 @@ while getopts "e:n:i:a:h:" arg; do
 done
 
 tput civis
-
 if [ $parameter_counter -eq 0 ]; then
 	helpPanel
 else
@@ -310,7 +322,11 @@ else
 		if [ ! "$number_output" ]; then	
 			number_output=100
 		fi
-		unconfirmedTransactions $number_output
+		if [ "$refresh" ]; then	
+			refreshTransactions			
+		else
+			unconfirmedTransactions $number_output
+		fi
 	elif [ "$(echo $exploration_mode)" == "inspect" ]; then
 		inspectTransaction $inspect_transaction
 	elif [ "$(echo $exploration_mode)" == "address" ]; then
