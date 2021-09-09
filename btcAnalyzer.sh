@@ -22,7 +22,7 @@ function ctrl_c(){
 }
 
 function dependencies(){
-	tput civis; counter=0
+	counter=0
 	dependencies_array=(html2text bc)
 
 	echo; for program in "${dependencies_array[@]}"; do
@@ -51,6 +51,7 @@ function dependencies(){
 function helpPanel(){
 	echo -e "\n${redColour}[!] Uso: ./btcAnalyzer${endColour}"
 	for i in $(seq 1 80); do echo -ne "${redColour}-"; done; echo -ne "${endColour}"
+	echo -e "\n\n\t${grayColour}[-u]${endColour}${yellowColour} Listar transacciones no confirmadas ${endColour}"
 	echo -e "\n\n\t${grayColour}[-e]${endColour}${yellowColour} Modo exploración${endColour}"
 	echo -e "\t\t${purpleColour}unconfirmed_transactions${endColour}${yellowColour}:\t Listar transacciones no confirmadas${endColour}"
 	echo -e "\t\t${purpleColour}inspect${endColour}${yellowColour}:\t\t\t Inspeccionar un hash de transacción${endColour}"
@@ -59,6 +60,7 @@ function helpPanel(){
 	echo -e "\n\t${grayColour}[-n]${endColour}${yellowColour} Limitar el número de resultados${endColour}${blueColour} (Ejemplo: -n 10)${endColour}"
 	echo -e "\n\t${grayColour}[-i]${endColour}${yellowColour} Proporcionar el identificador de transacción${endColour}${blueColour} (Ejemplo: -i ba76ab9876b98ad5b98ad5b9a8db5ad98b5ad98b5a9d)${endColour}"
 	echo -e "\n\t${grayColour}[-a]${endColour}${yellowColour} Proporcionar una dirección de transacción${endColour}${blueColour} (Ejemplo: -a bad876fa876A876f8d6a861b9a8bd9a)${endColour}"
+	echo -e "\n\t${grayColour}[-t]${endColour}${yellowColour} Ver cantidades totales${endColour}\n"
 	echo -e "\n\t${grayColour}[-h]${endColour}${yellowColour} Mostrar este panel de ayuda${endColour}\n"
 
 	tput cnorm; exit 1
@@ -160,6 +162,14 @@ function trimString(){
     sed 's,^[[:blank:]]*,,' <<< "${string}" | sed 's,[[:blank:]]*$,,'
 }
 
+function totalAmount(){
+	echo -n "Cantidad total_" > amount.table
+	echo "\$$(printf "%'.d\n" $(cat money.tmp))" >> amount.table
+	echo -ne "${blueColour}"
+	printTable '_' "$(cat amount.table)"
+	echo -ne "${endColour}"
+}
+
 function refreshTransactions(){
 	echo "Pulse ctrl + c para detener el programa"
 	while true;do
@@ -172,11 +182,9 @@ function unconfirmedTransactions(){
 	number_output=$1
 	touch  ut.table ut.tmp money.tmp tmpmoney.tmp amount.table utm.tmp
 
-#	while [ "$(cat ut.tmp | wc -l)" == "0" ]; do
-		# curl -s "$unconfirmed_transactions" | html2text | awk 'NF' > ut.tmp
 	wget --force-html -nv -O utm.tmp --show-progress $unconfirmed_transactions
 	cat utm.tmp | html2text | awk 'NF' > ut.tmp 
-#	done
+
 	hashes=$(cat ut.tmp | egrep -o "\[[A-Za-z0-9]{20,100}\]" | head -n $number_output | grep "[A-Za-z0-9]" | sed 's/[][]//g')
 	echo "Hash_Dolares_Bitcoin_Tiempo" > ut.table
 
@@ -206,17 +214,13 @@ function unconfirmedTransactions(){
 		echo $money > money.tmp
 	done;
 
-	echo -n "Cantidad total_" > amount.table
-	echo "\$$(printf "%'.d\n" $(cat money.tmp))" >> amount.table
-
 	if [ "$(cat ut.table | wc -l)" != "0" ]; then
 		clear
 		echo -ne "${yellowColour}"
 		printTable '_' "$(cat ut.table)"
 		echo -ne "${endColour}"
-		echo -ne "${blueColour}"
-		printTable '_' "$(cat amount.table)"
-		echo -ne "${endColour}"
+		if [ ! -z $total_amount ]; then totalAmount; fi
+		
 	fi
 	rm ut.table ut.tmp money.tmp tmpmoney.tmp amount.table utm.tmp 2>/dev/null
 	tput cnorm
@@ -300,36 +304,47 @@ function inspectAddress(){
 }
 
 # Inicio programa
+# tput civis
+dependencies; 
 
-dependencies; parameter_counter=0
+if [ ! -n "$1" ]; then helpPanel; fi;
 
-while getopts "e:r:n:i:a:h:" arg; do
-	case $arg in
-		e) exploration_mode=$OPTARG; let parameter_counter+=1;;
-		r) refresh=$OPTARG; let parameter_counter+=1;;
-		n) number_output=$OPTARG; let parameter_counter+=1;;
-		i) inspect_transaction=$OPTARG; let parameter_counter+=1;;
-		a) inspect_address=$OPTARG; let parameter_counter+=1;;
-		h) helpPanel;;
+while [ -n "$1" ]; do 
+	case "$1" in
+		-a) param="$2";inspect_address=$2;shift;;
+		-e) exploration_mode=$2; shift;;
+		-t) total_amount=1;shift;;
+		-r) refresh=$2;shift;;
+		-n) number_output=$2;shift;;
+		-i) inspect_transaction=$2;shift;;
+		-u) unconfirmedTransactions;shift;;
+		-h) helpPanel;;
+
+		# The double dash makes them parameters
+
+		--) shift;break;;
+		*) helpPanel;;
+
 	esac
-done
 
-tput civis
-if [ $parameter_counter -eq 0 ]; then
-	helpPanel
-else
-	if [ "$(echo $exploration_mode)" == "unconfirmed_transactions" ]; then
-		if [ ! "$number_output" ]; then	
-			number_output=100
-		fi
-		if [ "$refresh" ]; then	
-			refreshTransactions			
-		else
-			unconfirmedTransactions $number_output
-		fi
-	elif [ "$(echo $exploration_mode)" == "inspect" ]; then
-		inspectTransaction $inspect_transaction
-	elif [ "$(echo $exploration_mode)" == "address" ]; then
-		inspectAddress $inspect_address
+	shift
+
+done
+echo "$exploration_mode";
+echo "unconfirmed_transactions"
+if [ "$exploration_mode" == "unconfirmed_transactions" ]; then
+	echo "ALKI"
+	if [ ! "$number_output" ]; then	
+		number_output=100
 	fi
+	if [ "$refresh" ]; then	
+		refreshTransactions			
+	else
+		unconfirmedTransactions $number_output
+	fi
+elif [ "$(echo $exploration_mode)" == "inspect" ]; then
+	inspectTransaction $inspect_transaction
+elif [ "$(echo $exploration_mode)" == "address" ]; then
+	inspectAddress $inspect_address
 fi
+
